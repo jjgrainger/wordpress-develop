@@ -176,9 +176,9 @@ function image_hwstring( $width, $height ) {
  *
  * @since 2.5.0
  *
- * @param int          $id        Attachment ID for image.
- * @param string|int[] $size      Optional. Image size. Accepts any registered image size name, or an array
- *                                of width and height values in pixels (in that order). Default 'medium'.
+ * @param int          $id   Attachment ID for image.
+ * @param string|int[] $size Optional. Image size. Accepts any registered image size name, or an array
+ *                           of width and height values in pixels (in that order). Default 'medium'.
  * @return array|false {
  *     Array of image data, or boolean false if no image is available.
  *
