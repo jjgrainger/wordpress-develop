@@ -932,14 +932,13 @@ function wp_get_registered_image_subsizes() {
 }
 
 /**
- * Retrieves an image to represent an attachment.
+ * Retrieves an attachments preview image or icon source.
  *
- * @since 2.5.0
+ * @since n.e.x.t
  *
  * @param int          $attachment_id Image attachment ID.
  * @param string|int[] $size          Optional. Image size. Accepts any registered image size name, or an array of
  *                                    width and height values in pixels (in that order). Default 'thumbnail'.
- * @param bool         $icon          Optional. Whether the image should fall back to a mime type icon. Default false.
  * @return array|false {
  *     Array of image data, or boolean false if no image is available.
  *
@@ -949,22 +948,20 @@ function wp_get_registered_image_subsizes() {
  *     @type bool   $3 Whether the image is a resized image.
  * }
  */
-function wp_get_attachment_image_src( $attachment_id, $size = 'thumbnail', $icon = false ) {
+function wp_get_attachment_preview_src( $attachment_id, $size = 'thumbnail' ) {
 	// Get a thumbnail or intermediate image if there is one.
 	$image = image_downsize( $attachment_id, $size );
+
+	// If there is no image available for the attachment, fallback to the mime type icon.
 	if ( ! $image ) {
-		$src = false;
+		$src = wp_mime_type_icon( $attachment_id );
 
-		if ( $icon ) {
-			$src = wp_mime_type_icon( $attachment_id );
+		if ( $src ) {
+			/** This filter is documented in wp-includes/post.php */
+			$icon_dir = apply_filters( 'icon_dir', ABSPATH . WPINC . '/images/media' );
 
-			if ( $src ) {
-				/** This filter is documented in wp-includes/post.php */
-				$icon_dir = apply_filters( 'icon_dir', ABSPATH . WPINC . '/images/media' );
-
-				$src_file               = $icon_dir . '/' . wp_basename( $src );
-				list( $width, $height ) = wp_getimagesize( $src_file );
-			}
+			$src_file               = $icon_dir . '/' . wp_basename( $src );
+			list( $width, $height ) = wp_getimagesize( $src_file );
 		}
 
 		if ( $src && $width && $height ) {
@@ -972,9 +969,9 @@ function wp_get_attachment_image_src( $attachment_id, $size = 'thumbnail', $icon
 		}
 	}
 	/**
-	 * Filters the attachment image source result.
+	 * Filters the attachment preview source.
 	 *
-	 * @since 4.3.0
+	 * @since n.e.x.t
 	 *
 	 * @param array|false  $image         {
 	 *     Array of image data, or boolean false if no image is available.
@@ -987,9 +984,111 @@ function wp_get_attachment_image_src( $attachment_id, $size = 'thumbnail', $icon
 	 * @param int          $attachment_id Image attachment ID.
 	 * @param string|int[] $size          Requested image size. Can be any registered image size name, or
 	 *                                    an array of width and height values in pixels (in that order).
-	 * @param bool         $icon          Whether the image should be treated as an icon.
 	 */
-	return apply_filters( 'wp_get_attachment_image_src', $image, $attachment_id, $size, $icon );
+	return apply_filters( 'wp_get_attachment_preview_src', $image, $attachment_id, $size );
+}
+
+/**
+ * Retrieves an image to represent an attachment.
+ *
+ * @since 2.5.0
+ *
+ * @param int          		$attachment_id Image attachment ID.
+ * @param string|int[] 		$size          Optional. Image size. Accepts any registered image size name, or an array of
+ *                                    	   width and height values in pixels (in that order). Default 'thumbnail'.
+ * @param bool|string|array $args          {
+ *     Optional. An array of arguments to determine the image retrieved. Default empty array.
+ *
+ *     @type boolean $icon      Whether to return the mime type icon if an image is not available
+ *     @type string  $mime_type Define the attachment mime type to return. Must be a valid mime type (e.g ‘image/webp’).
+ *                              Will return the requested mime type if available or the attachment's original mime type
+ *                              as a fallback.
+ * }
+ * @return array|false {
+ *     Array of image data, or boolean false if no image is available.
+ *
+ *     @type string $0 Image source URL.
+ *     @type int    $1 Image width in pixels.
+ *     @type int    $2 Image height in pixels.
+ *     @type bool   $3 Whether the image is a resized image.
+ * }
+ */
+function wp_get_attachment_image_src( $attachment_id, $size = 'thumbnail', $args = [] ) {
+	// Determine the image mime type to return, falling back to the original mime type.
+	$target_mime   = null;
+	$original_mime = get_post_mime_type( $attachment_id );
+
+	// Determine the correct mime type to use.
+	if ( isset( $args['mime_type'] ) || is_string( $args ) ) {
+		$target_mime = isset( $args['mime_type'] ) ? $args['mime_type'] : $args;
+	}
+
+	if ( ! $target_mime ) {
+		$target_mime = $original_mime;
+	}
+
+	// Determine whether to fallback to an icon.
+	$icon = false;
+
+	if ( isset( $args['icon'] ) || is_bool( $args ) ) {
+		$icon = isset( $args['icon'] ) ? $args['icon'] : $args;
+	}
+
+	// Get the initial image.
+	$image = image_downsize( $attachment_id, $size );
+
+	// Get the correct mime if alternative is requested.
+	if ( $image && ( $target_mime !== $original_mime ) ) {
+		$metadata = wp_get_attachment_metadata( $attachment_id );
+
+		// Determine correct image size if size array passed.
+		if ( is_array( $size ) ) {
+			foreach( $metadata['sizes'] as $image_size => $size_data ) {
+				if ( $size_data['file'] !== $src[0] ) {
+					continue;
+				}
+				$size = $image_size;
+			}
+		}
+
+		if ( 'full' === $size && isset( $metadata['sources'][ $target_mime ]['file'] ) ) {
+			$file = wp_basename( $metadata['sources'][ $target_mime ]['file'] );
+		} elseif ( isset( $metadata['sizes'][ $size ]['sources'][ $target_mime ]['file'] ) ) {
+			$file = $metadata['sizes'][ $size ]['sources'][ $target_mime ]['file'];
+		}
+
+		$image[0] = str_replace( wp_basename( $image[0] ), $file, $image[0] );
+	}
+
+	if ( ! $image && $icon ) {
+		$image = wp_get_attachment_preview_src( $attachment_id, $size );
+	}
+	/**
+	 * Filters the attachment image source result.
+	 *
+	 * @since 4.3.0
+	 *
+	 * @param array|false       $image         {
+	 *     Array of image data, or boolean false if no image is available.
+	 *
+	 *     @type string $0 Image source URL.
+	 *     @type int    $1 Image width in pixels.
+	 *     @type int    $2 Image height in pixels.
+	 *     @type bool   $3 Whether the image is a resized image.
+	 * }
+	 * @param int               $attachment_id Image attachment ID.
+	 * @param string|int[]      $size          Requested image size. Can be any registered image size name, or
+	 *                                         an array of width and height values in pixels (in that order).
+	 * @param bool|string|array $args          {
+ 	 *     Optional. An array of arguments to determine the image retrieved. Default empty array.
+	 *
+	 *     @type boolean $icon      Whether to return the mime type icon if an image is not available
+	 *     @type string  $mime_type Define the attachment mime type to return. Must be a valid mime type (e.g ‘image/webp’).
+ 	 *                              Will return the requested mime type if available or the attachment's original mime type
+	 *                              as a fallback.
+	 * }
+	 */
+	return apply_filters( 'wp_get_attachment_image_src', $image, $attachment_id, $size, $args );
 }
 
 /**
@@ -1005,11 +1104,18 @@ function wp_get_attachment_image_src( $attachment_id, $size = 'thumbnail', $icon
  * @since 5.5.0 The `$loading` attribute was added.
  * @since 6.1.0 The `$decoding` attribute was added.
  *
- * @param int          $attachment_id Image attachment ID.
- * @param string|int[] $size          Optional. Image size. Accepts any registered image size name, or an array
- *                                    of width and height values in pixels (in that order). Default 'thumbnail'.
- * @param bool         $icon          Optional. Whether the image should be treated as an icon. Default false.
- * @param string|array $attr {
+ * @param int               $attachment_id Image attachment ID.
+ * @param string|int[]      $size          Optional. Image size. Accepts any registered image size name, or an array
+ *                                         of width and height values in pixels (in that order). Default 'thumbnail'.
+ * @param string|bool|array $args          {
+ *     Optional. An array of arguments to determine the image retrieved. Default empty array.
+ *
+ *     @type boolean $icon      Whether to return the mime type icon if an image is not available
+ *     @type string  $mime_type Define the attachment mime type to return. Must be a valid mime type (e.g ‘image/webp’).
+ *                              Will return the requested mime type if available or the attachment's original mime type
+ *                              as a fallback.
+ * }
+ * @param string|array      $attr          {
  *     Optional. Attributes for the image markup.
  *
  *     @type string       $src      Image attachment URL.
@@ -1027,9 +1133,9 @@ function wp_get_attachment_image_src( $attachment_id, $size = 'thumbnail', $icon
  * }
  * @return string HTML img element or empty string on failure.
  */
-function wp_get_attachment_image( $attachment_id, $size = 'thumbnail', $icon = false, $attr = '' ) {
+function wp_get_attachment_image( $attachment_id, $size = 'thumbnail', $args = [], $attr = '' ) {
 	$html  = '';
-	$image = wp_get_attachment_image_src( $attachment_id, $size, $icon );
+	$image = wp_get_attachment_image_src( $attachment_id, $size, $args );
 
 	if ( $image ) {
 		list( $src, $width, $height ) = $image;
@@ -1109,15 +1215,22 @@ function wp_get_attachment_image( $attachment_id, $size = 'thumbnail', $icon = f
 	 *
 	 * @since 5.6.0
 	 *
-	 * @param string       $html          HTML img element or empty string on failure.
-	 * @param int          $attachment_id Image attachment ID.
-	 * @param string|int[] $size          Requested image size. Can be any registered image size name, or
-	 *                                    an array of width and height values in pixels (in that order).
-	 * @param bool         $icon          Whether the image should be treated as an icon.
-	 * @param string[]     $attr          Array of attribute values for the image markup, keyed by attribute name.
-	 *                                    See wp_get_attachment_image().
+	 * @param string            $html          HTML img element or empty string on failure.
+	 * @param int               $attachment_id Image attachment ID.
+	 * @param string|int[]      $size          Requested image size. Can be any registered image size name, or
+	 *                                         an array of width and height values in pixels (in that order).
+	 * @param string|bool|array $args          {
+     *     Optional. An array of arguments to determine the image retrieved. Default empty array.
+ 	 *
+ 	 *     @type boolean $icon      Whether to return the mime type icon if an image is not available
+ 	 *     @type string  $mime_type Define the attachment mime type to return. Must be a valid mime type (e.g ‘image/webp’).
+ 	 *                              Will return the requested mime type if available or the attachment's original mime type
+ 	 *                              as a fallback.
+ 	 * }
+	 * @param string[]          $attr Array of attribute values for the image markup, keyed by attribute name.
+	 *                                See wp_get_attachment_image().
 	 */
-	return apply_filters( 'wp_get_attachment_image', $html, $attachment_id, $size, $icon, $attr );
+	return apply_filters( 'wp_get_attachment_image', $html, $attachment_id, $size, $args, $attr );
 }
 
 /**
@@ -1125,15 +1238,22 @@ function wp_get_attachment_image( $attachment_id, $size = 'thumbnail', $icon = f
  *
  * @since 4.4.0
  *
- * @param int          $attachment_id Image attachment ID.
- * @param string|int[] $size          Optional. Image size. Accepts any registered image size name, or an array of
- *                                    width and height values in pixels (in that order). Default 'thumbnail'.
- * @param bool         $icon          Optional. Whether the image should be treated as an icon. Default false.
+ * @param int               $attachment_id Image attachment ID.
+ * @param string|int[]      $size          Optional. Image size. Accepts any registered image size name, or an array of
+ *                                         width and height values in pixels (in that order). Default 'thumbnail'.
+ * @param string|bool|array $args          {
+ *     Optional. An array of arguments to determine the image retrieved. Default empty array.
+ *
+ *     @type boolean $icon      Whether to return the mime type icon if an image is not available
+ *     @type string  $mime_type Define the attachment mime type to return. Must be a valid mime type (e.g ‘image/webp’).
+ *                              Will return the requested mime type if available or the attachment's original mime type
+ *                              as a fallback.
+ * }
  * @return string|false Attachment URL or false if no image is available. If `$size` does not match
  *                      any registered image size, the original image URL will be returned.
  */
-function wp_get_attachment_image_url( $attachment_id, $size = 'thumbnail', $icon = false ) {
-	$image = wp_get_attachment_image_src( $attachment_id, $size, $icon );
+function wp_get_attachment_image_url( $attachment_id, $size = 'thumbnail', $args = [] ) {
+	$image = wp_get_attachment_image_src( $attachment_id, $size, $args );
 	return isset( $image[0] ) ? $image[0] : false;
 }
 

@@ -1603,17 +1603,24 @@ function the_attachment_link( $id = 0, $fullsize = false, $deprecated = false, $
  * @since 2.5.0
  * @since 4.4.0 The `$id` parameter can now accept either a post ID or `WP_Post` object.
  *
- * @param int|WP_Post  $id        Optional. Post ID or post object.
- * @param string|int[] $size      Optional. Image size. Accepts any registered image size name, or an array
- *                                of width and height values in pixels (in that order). Default 'thumbnail'.
- * @param bool         $permalink Optional. Whether to add permalink to image. Default false.
- * @param bool         $icon      Optional. Whether the attachment is an icon. Default false.
- * @param string|false $text      Optional. Link text to use. Activated by passing a string, false otherwise.
- *                                Default false.
- * @param array|string $attr      Optional. Array or string of attributes. Default empty.
+ * @param int|WP_Post        $id        Optional. Post ID or post object.
+ * @param string|int[]       $size      Optional. Image size. Accepts any registered image size name, or an array
+ *                                      of width and height values in pixels (in that order). Default 'thumbnail'.
+ * @param bool               $permalink Optional. Whether to add permalink to image. Default false.
+  * @param string|bool|array $args      {
+ *     Optional. An array of arguments to determine the image retrieved. Default empty array.
+ *
+ *     @type boolean $icon      Whether to return the mime type icon if an image is not available
+ *     @type string  $mime_type Define the attachment mime type to return. Must be a valid mime type (e.g ‘image/webp’).
+ *                              Will return the requested mime type if available or the attachment's original mime type
+ *                              as a fallback.
+ * }
+ * @param string|false       $text      Optional. Link text to use. Activated by passing a string, false otherwise.
+ *                                      Default false.
+ * @param array|string       $attr      Optional. Array or string of attributes. Default empty.
  * @return string HTML content.
  */
-function wp_get_attachment_link( $id = 0, $size = 'thumbnail', $permalink = false, $icon = false, $text = false, $attr = '' ) {
+function wp_get_attachment_link( $id = 0, $size = 'thumbnail', $permalink = false, $args = [], $text = false, $attr = '' ) {
 	$_post = get_post( $id );
 
 	if ( empty( $_post ) || ( 'attachment' !== $_post->post_type ) || ! wp_get_attachment_url( $_post->ID ) ) {
@@ -1629,7 +1636,7 @@ function wp_get_attachment_link( $id = 0, $size = 'thumbnail', $permalink = fals
 	if ( $text ) {
 		$link_text = $text;
 	} elseif ( $size && 'none' !== $size ) {
-		$link_text = wp_get_attachment_image( $_post->ID, $size, $icon, $attr );
+		$link_text = wp_get_attachment_image( $_post->ID, $size, $args, $attr );
 	} else {
 		$link_text = '';
 	}
@@ -1647,16 +1654,23 @@ function wp_get_attachment_link( $id = 0, $size = 'thumbnail', $permalink = fals
 	 * @since 2.7.0
 	 * @since 5.1.0 Added the `$attr` parameter.
 	 *
-	 * @param string       $link_html The page link HTML output.
-	 * @param int|WP_Post  $id        Post ID or object. Can be 0 for the current global post.
-	 * @param string|int[] $size      Requested image size. Can be any registered image size name, or
-	 *                                an array of width and height values in pixels (in that order).
-	 * @param bool         $permalink Whether to add permalink to image. Default false.
-	 * @param bool         $icon      Whether to include an icon.
+	 * @param string            $link_html The page link HTML output.
+	 * @param int|WP_Post       $id        Post ID or object. Can be 0 for the current global post.
+	 * @param string|int[]      $size      Requested image size. Can be any registered image size name, or
+	 *                                     an array of width and height values in pixels (in that order).
+	 * @param bool              $permalink Whether to add permalink to image. Default false.
+	 * @param string|bool|array $args      {
+	 *     Optional. An array of arguments to determine the image retrieved. Default empty array.
+	 *
+	 *     @type boolean $icon      Whether to return the mime type icon if an image is not available
+	 *     @type string  $mime_type Define the attachment mime type to return. Must be a valid mime type (e.g ‘image/webp’).
+	 *                              Will return the requested mime type if available or the attachment's original mime type
+	 *                              as a fallback.
+	 * }
 	 * @param string|false $text      If string, will be link text.
 	 * @param array|string $attr      Array or string of attributes.
 	 */
-	return apply_filters( 'wp_get_attachment_link', "<a href='" . esc_url( $url ) . "'>$link_text</a>", $id, $size, $permalink, $icon, $text, $attr );
+	return apply_filters( 'wp_get_attachment_link', "<a href='" . esc_url( $url ) . "'>$link_text</a>", $id, $size, $permalink, $args, $text, $attr );
 }
 
 /**
