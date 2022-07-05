@@ -176,9 +176,9 @@ function image_hwstring( $width, $height ) {
  *
  * @since 2.5.0
  *
- * @param int          $id   Attachment ID for image.
- * @param string|int[] $size Optional. Image size. Accepts any registered image size name, or an array
- *                           of width and height values in pixels (in that order). Default 'medium'.
+ * @param int          $id        Attachment ID for image.
+ * @param string|int[] $size      Optional. Image size. Accepts any registered image size name, or an array
+ *                                of width and height values in pixels (in that order). Default 'medium'.
  * @return array|false {
  *     Array of image data, or boolean false if no image is available.
  *
@@ -956,20 +956,18 @@ function wp_get_attachment_preview_src( $attachment_id, $size = 'thumbnail' ) {
 	if ( ! $image ) {
 		$src = wp_mime_type_icon( $attachment_id );
 
-			if ( $src ) {
-				/** This filter is documented in wp-includes/post.php */
-				$icon_dir = apply_filters( 'icon_dir', ABSPATH . WPINC . '/images/media' );
+		if ( $src ) {
+			/** This filter is documented in wp-includes/post.php */
+			$icon_dir = apply_filters( 'icon_dir', ABSPATH . WPINC . '/images/media' );
 
-				$src_file               = $icon_dir . '/' . wp_basename( $src );
-				list( $width, $height ) = wp_getimagesize( $src_file );
-			}
+			$src_file               = $icon_dir . '/' . wp_basename( $src );
+			list( $width, $height ) = wp_getimagesize( $src_file );
 		}
 
 		if ( $src && $width && $height ) {
 			$image = array( $src, $width, $height, false );
 		}
 	}
-
 	/**
 	 * Filters the attachment preview source.
 	 *
@@ -995,10 +993,17 @@ function wp_get_attachment_preview_src( $attachment_id, $size = 'thumbnail' ) {
  *
  * @since 2.5.0
  *
- * @param int          $attachment_id Image attachment ID.
- * @param string|int[] $size          Optional. Image size. Accepts any registered image size name, or an array of
- *                                    width and height values in pixels (in that order). Default 'thumbnail'.
- * @param bool         $icon          Optional. Whether the image should fall back to a mime type icon. Default false.
+ * @param int          		$attachment_id Image attachment ID.
+ * @param string|int[] 		$size          Optional. Image size. Accepts any registered image size name, or an array of
+ *                                    	   width and height values in pixels (in that order). Default 'thumbnail'.
+ * @param bool|string|array $args          {
+ *     Optional. An array of arguments to determine the image retrieved. Default empty array.
+ *
+ *     @type boolean $icon      Whether to return the mime type icon if an image is not available
+ *     @type string  $mime_type Define the attachment mime type to return. Must be a valid mime type (e.g ‘image/webp’).
+ *                              Will return the requested mime type if available or the attachment's original mime type
+ *                              as a fallback.
+ * }
  * @return array|false {
  *     Array of image data, or boolean false if no image is available.
  *
@@ -1008,27 +1013,55 @@ function wp_get_attachment_preview_src( $attachment_id, $size = 'thumbnail' ) {
  *     @type bool   $3 Whether the image is a resized image.
  * }
  */
-function wp_get_attachment_image_src( $attachment_id, $size = 'thumbnail', $icon = false ) {
-	// Get a thumbnail or intermediate image if there is one.
+function wp_get_attachment_image_src( $attachment_id, $size = 'thumbnail', $args = [] ) {
+	// Determine the image mime type to return, falling back to the original mime type.
+	$target_mime   = null;
+	$original_mime = get_post_mime_type( $attachment_id );
+
+	// Determine the correct mime type to use.
+	if ( isset( $args['mime_type'] ) || is_string( $args ) ) {
+		$target_mime = isset( $args['mime_type'] ) ? $args['mime_type'] : $args;
+	}
+
+	if ( ! $target_mime ) {
+		$target_mime = $original_mime;
+	}
+
+	// Determine whether to fallback to an icon.
+	$icon = false;
+
+	if ( isset( $args['icon'] ) || is_bool( $args ) ) {
+		$icon = isset( $args['icon'] ) ? $args['icon'] : $args;
+	}
+
+	// Get the initial image.
 	$image = image_downsize( $attachment_id, $size );
-	if ( ! $image ) {
-		$src = false;
 
-		if ( $icon ) {
-			$src = wp_mime_type_icon( $attachment_id );
+	// Get the correct mime if alternative is requested.
+	if ( $image && ( $target_mime !== $original_mime ) ) {
+		$metadata = wp_get_attachment_metadata( $attachment_id );
 
-			if ( $src ) {
-				/** This filter is documented in wp-includes/post.php */
-				$icon_dir = apply_filters( 'icon_dir', ABSPATH . WPINC . '/images/media' );
-
-				$src_file               = $icon_dir . '/' . wp_basename( $src );
-				list( $width, $height ) = wp_getimagesize( $src_file );
+		// Determine correct image size if size array passed.
+		if ( is_array( $size ) ) {
+			foreach( $metadata['sizes'] as $image_size => $size_data ) {
+				if ( $size_data['file'] !== $src[0] ) {
+					continue;
+				}
+				$size = $image_size;
 			}
 		}
 
-		if ( $src && $width && $height ) {
-			$image = array( $src, $width, $height, false );
+		if ( 'full' === $size && isset( $metadata['sources'][ $target_mime ]['file'] ) ) {
+			$file = wp_basename( $metadata['sources'][ $target_mime ]['file'] );
+		} elseif ( isset( $metadata['sizes'][ $size ]['sources'][ $target_mime ]['file'] ) ) {
+			$file = $metadata['sizes'][ $size ]['sources'][ $target_mime ]['file'];
 		}
+
+		$image[0] = str_replace( wp_basename( $image[0] ), $file, $image[0] );
+	}
+
+	if ( ! $image && $icon ) {
+		$image = wp_get_attachment_preview_src( $attachment_id, $size );
 	}
 	/**
 	 * Filters the attachment image source result.
